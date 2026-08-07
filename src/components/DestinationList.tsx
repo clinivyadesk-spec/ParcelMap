@@ -101,14 +101,16 @@ export function DestinationList({ destinations, onChange, disabled }: Destinatio
               </p>
             </div>
 
-            <div className="flex shrink-0 flex-col gap-0.5">
+            {/* Touch targets: these were 16px tall, which is unhittable on a
+                phone. 32px square is the smallest that works reliably. */}
+            <div className="flex shrink-0 flex-col gap-1">
               <button
                 type="button"
                 aria-label={`Move ${dest.name} up`}
                 data-testid="move-up"
                 disabled={index === 0}
                 onClick={() => move(index, index - 1)}
-                className="rounded px-1.5 text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-200 disabled:opacity-25"
+                className="flex h-8 w-8 items-center justify-center rounded text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-200 disabled:opacity-25"
               >
                 ▲
               </button>
@@ -118,7 +120,7 @@ export function DestinationList({ destinations, onChange, disabled }: Destinatio
                 data-testid="move-down"
                 disabled={index === destinations.length - 1}
                 onClick={() => move(index, index + 1)}
-                className="rounded px-1.5 text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-200 disabled:opacity-25"
+                className="flex h-8 w-8 items-center justify-center rounded text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-200 disabled:opacity-25"
               >
                 ▼
               </button>
@@ -127,7 +129,7 @@ export function DestinationList({ destinations, onChange, disabled }: Destinatio
                 aria-label={`Remove ${dest.name}`}
                 data-testid="remove-destination"
                 onClick={() => remove(index)}
-                className="rounded px-1.5 text-xs text-slate-600 transition hover:bg-rose-500/10 hover:text-rose-300"
+                className="flex h-8 w-8 items-center justify-center rounded text-xs text-slate-600 transition hover:bg-rose-500/10 hover:text-rose-300"
               >
                 ✕
               </button>

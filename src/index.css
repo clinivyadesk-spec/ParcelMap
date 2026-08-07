@@ -11,12 +11,35 @@ body,
   height: 100%;
 }
 
+/* Mobile browsers shrink the viewport as their toolbars slide away, so a
+   percentage height leaves the layout short. Small-viewport units track the
+   worst case and stay put. */
+@supports (height: 100svh) {
+  html,
+  body,
+  #root {
+    height: 100svh;
+  }
+}
+
 body {
   margin: 0;
   font-family:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Inter, sans-serif;
   background: #0b0f17;
   color: #e6edf7;
+  /* Nothing here scrolls horizontally; stop rubber-banding sideways. */
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* iOS Safari zooms the page when a control smaller than 16px takes focus. */
+@media (max-width: 1023px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 /* The stage is rendered at true output resolution and scaled down with a CSS

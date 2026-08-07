@@ -16,9 +16,18 @@ import {
   listProjects,
   saveProject,
 } from './lib/storage.ts'
+import { DESKTOP_QUERY, useMediaQuery } from './lib/useMediaQuery.ts'
 import type { Place, Project, Scene, VideoSettings } from './lib/types.ts'
 
 const AUTOSAVE_DELAY_MS = 700
+
+type MobileTab = 'places' | 'style' | 'export'
+
+const MOBILE_TABS: { id: MobileTab; label: string }[] = [
+  { id: 'places', label: 'Places' },
+  { id: 'style', label: 'Style' },
+  { id: 'export', label: 'Export' },
+]
 
 function Section({ title, children, action }: {
   title: string
@@ -49,6 +58,8 @@ export default function App() {
   const [stage, setStage] = useState<MapStage | null>(null)
   const [rendering, setRendering] = useState(false)
   const [projects, setProjects] = useState<Project[]>(() => listProjects())
+  const [tab, setTab] = useState<MobileTab>('places')
+  const isDesktop = useMediaQuery(DESKTOP_QUERY)
 
   const styleForced = useMemo(() => styleOverride(), [])
 
@@ -122,6 +133,12 @@ export default function App() {
 
   const handleStage = useCallback((next: MapStage | null) => setStage(next), [])
 
+  // On a phone the progress bar lives behind a tab; jump to it when a render
+  // starts so the user is not left staring at a frozen editor.
+  useEffect(() => {
+    if (rendering) setTab('export')
+  }, [rendering])
+
   const exportBlocked =
     !project.origin
       ? 'Set an origin city first.'
@@ -129,198 +146,286 @@ export default function App() {
         ? 'Add at least one destination.'
         : null
 
+  // --- shared pieces, composed differently per layout ------------------------
+
+  const projectControls = (
+    // Swapping or clearing the project mid-render corrupts the file too.
+    <fieldset
+      disabled={rendering}
+      data-testid="project-controls"
+      className="flex w-full flex-wrap items-center gap-2 disabled:opacity-60 lg:w-auto lg:flex-nowrap lg:gap-3"
+    >
+      <input
+        value={project.name}
+        data-testid="project-name"
+        aria-label="Project name"
+        onChange={(e) => setProject((p) => ({ ...p, name: e.target.value }))}
+        className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm outline-none focus:border-sky-500/60 lg:w-52 lg:flex-none lg:py-1.5"
+      />
+      <select
+        value=""
+        data-testid="project-picker"
+        aria-label="Open a saved project"
+        onChange={(e) => {
+          const found = getProject(e.target.value)
+          if (found) setProject(found)
+        }}
+        /* A select sizes itself to its widest option, so a long project name
+           stretches the row past the viewport. Cap it and let the browser
+           elide; the full name is still readable once the menu is open. */
+        className="min-w-0 max-w-[8.5rem] rounded-lg border border-white/10 bg-slate-950/60 px-2 py-2 text-xs text-slate-300 outline-none focus:border-sky-500/60 lg:max-w-[12rem] lg:py-1.5"
+      >
+        <option value="">Open…</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name} ({p.destinations.length})
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        data-testid="new-project"
+        onClick={() => setProject(emptyProject())}
+        className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/5 lg:py-1.5"
+      >
+        New
+      </button>
+      <button
+        type="button"
+        data-testid="load-sample"
+        onClick={() => setProject(sampleProject())}
+        className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-200 transition hover:bg-sky-500/20 lg:py-1.5"
+      >
+        Load sample
+      </button>
+      <button
+        type="button"
+        data-testid="delete-project"
+        onClick={() => {
+          deleteProject(project.id)
+          const remaining = listProjects()
+          setProjects(remaining)
+          setProject(remaining[0] ?? emptyProject())
+        }}
+        className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300 lg:py-1.5"
+      >
+        Delete
+      </button>
+    </fieldset>
+  )
+
+  const originSection = (
+    <Section title="Origin">
+      {project.origin && (
+        <div
+          data-testid="origin-summary"
+          className="mb-3 rounded-lg border border-sky-500/30 bg-sky-500/10 p-2.5"
+        >
+          <input
+            value={project.origin.name}
+            data-testid="origin-name"
+            aria-label="Origin name"
+            onChange={(e) =>
+              setProject((p) => ({
+                ...p,
+                origin: p.origin ? { ...p.origin, name: e.target.value } : null,
+              }))
+            }
+            className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-semibold text-sky-100 outline-none hover:border-white/10 focus:border-sky-500/60 focus:bg-slate-950"
+          />
+          <input
+            value={project.origin.subLabel ?? ''}
+            data-testid="origin-sublabel"
+            aria-label="Origin sub-label"
+            placeholder="Sub-label, e.g. Main branch"
+            onChange={(e) =>
+              setProject((p) => ({
+                ...p,
+                origin: p.origin ? { ...p.origin, subLabel: e.target.value } : null,
+              }))
+            }
+            className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-sky-200/70 outline-none placeholder:text-sky-200/30 hover:border-white/10 focus:border-sky-500/60 focus:bg-slate-950"
+          />
+          <p className="px-1 font-mono text-[10px] text-sky-200/50">
+            {project.origin.lat.toFixed(4)}, {project.origin.lng.toFixed(4)}
+          </p>
+        </div>
+      )}
+      <PlaceSearch
+        label={project.origin ? 'Change origin' : 'Search for the dispatch hub'}
+        placeholder="Vijayawada — or 16.5062, 80.648"
+        testId="origin-search"
+        onPick={setOrigin}
+      />
+    </Section>
+  )
+
+  const destinationsSection = (
+    <Section
+      title="Destinations"
+      action={<span className="text-xs text-slate-500">{project.destinations.length}</span>}
+    >
+      <div className="mb-3">
+        <PlaceSearch
+          label="Add a town"
+          placeholder="Guntur — or 16.3067, 80.4365"
+          testId="destination-search"
+          onPick={addDestination}
+        />
+      </div>
+      <DestinationList
+        destinations={project.destinations}
+        onChange={setDestinations}
+        disabled={rendering}
+      />
+    </Section>
+  )
+
+  const settingsSection = (
+    <Section title="Video settings">
+      <SettingsPanel
+        settings={project.settings}
+        destinationCount={project.destinations.length}
+        onChange={patchSettings}
+      />
+    </Section>
+  )
+
+  const exportSection = (
+    <>
+      <Section title="Export MP4">
+        <ExportPanel
+          stage={scene ? stage : null}
+          disabledReason={exportBlocked}
+          onRenderingChange={setRendering}
+        />
+      </Section>
+      {stage?.usedFallbackStyle && (
+        <p className="rounded-lg bg-amber-500/10 p-3 text-[11px] text-amber-200">
+          The OpenFreeMap basemap could not be reached, so the offline grid is being used instead.
+          Check your connection and reload to get real map tiles.
+        </p>
+      )}
+    </>
+  )
+
+  const previewPane = scene ? (
+    <Preview scene={scene} onStageReady={handleStage} disabled={rendering} />
+  ) : (
+    <div
+      data-testid="no-origin"
+      className="flex flex-1 items-center justify-center p-6 text-center text-sm text-slate-500"
+    >
+      Set an origin city to see the preview.
+    </div>
+  )
+
+  const buildStamp = (
+    <span data-testid="build-id" className="font-mono text-[10px] text-slate-600">
+      build {__BUILD_ID__}
+    </span>
+  )
+
   return (
     <div className="flex h-full flex-col">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-white/10 px-5 py-3">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/10 px-3 py-2.5 lg:px-5 lg:py-3">
         <div className="flex items-baseline gap-2">
           <span className="text-base font-bold tracking-tight text-sky-400">ParcelMap</span>
-          <span className="hidden text-xs text-slate-500 sm:inline">
+          <span className="hidden text-xs text-slate-500 xl:inline">
             hub-and-spoke delivery animations, rendered in your browser
           </span>
         </div>
 
-        {/* Swapping or clearing the project mid-render corrupts the file too. */}
-        <fieldset
-          disabled={rendering}
-          data-testid="project-controls"
-          className="ml-auto flex flex-wrap items-center gap-3 disabled:opacity-60"
-        >
-        <input
-          value={project.name}
-          data-testid="project-name"
-          aria-label="Project name"
-          onChange={(e) => setProject((p) => ({ ...p, name: e.target.value }))}
-          className="w-52 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 text-sm outline-none focus:border-sky-500/60"
-        />
+        {isDesktop && <div className="ml-auto">{projectControls}</div>}
 
-        <select
-          value=""
-          data-testid="project-picker"
-          aria-label="Open a saved project"
-          onChange={(e) => {
-            const found = getProject(e.target.value)
-            if (found) setProject(found)
-          }}
-          className="rounded-lg border border-white/10 bg-slate-950/60 px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-sky-500/60"
+        <span
+          data-testid="save-status"
+          className="ml-auto text-right text-[11px] text-slate-600 lg:ml-0 lg:w-28"
         >
-          <option value="">Open…</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} ({p.destinations.length})
-            </option>
-          ))}
-        </select>
-
-        <button
-          type="button"
-          data-testid="new-project"
-          onClick={() => setProject(emptyProject())}
-          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/5"
-        >
-          New
-        </button>
-        <button
-          type="button"
-          data-testid="load-sample"
-          onClick={() => setProject(sampleProject())}
-          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/5"
-        >
-          Load sample
-        </button>
-        <button
-          type="button"
-          data-testid="delete-project"
-          onClick={() => {
-            deleteProject(project.id)
-            const remaining = listProjects()
-            setProjects(remaining)
-            setProject(remaining[0] ?? emptyProject())
-          }}
-          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300"
-        >
-          Delete
-        </button>
-        </fieldset>
-        <span data-testid="save-status" className="w-28 text-right text-[11px] text-slate-600">
           {pending ? 'saving…' : saved ? `saved ${saved}` : ''}
         </span>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        {/*
-          The exporter configures its encoder for one frame size and one
-          timeline, then renders against the live stage. Editing anything
-          mid-render silently corrupts the file, so the whole editor is inert
-          until it finishes.
-        */}
-        <fieldset
-          disabled={rendering}
-          data-testid="editor-panel"
-          className="w-[380px] shrink-0 space-y-4 overflow-y-auto border-r border-white/10 p-4 disabled:opacity-60"
-        >
-          <Section title="Origin">
-            {project.origin && (
-              <div
-                data-testid="origin-summary"
-                className="mb-3 rounded-lg border border-sky-500/30 bg-sky-500/10 p-2.5"
-              >
-                <input
-                  value={project.origin.name}
-                  data-testid="origin-name"
-                  aria-label="Origin name"
-                  onChange={(e) =>
-                    setProject((p) => ({
-                      ...p,
-                      origin: p.origin ? { ...p.origin, name: e.target.value } : null,
-                    }))
-                  }
-                  className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-semibold text-sky-100 outline-none hover:border-white/10 focus:border-sky-500/60 focus:bg-slate-950"
-                />
-                <input
-                  value={project.origin.subLabel ?? ''}
-                  data-testid="origin-sublabel"
-                  aria-label="Origin sub-label"
-                  placeholder="Sub-label, e.g. Dispatch hub"
-                  onChange={(e) =>
-                    setProject((p) => ({
-                      ...p,
-                      origin: p.origin ? { ...p.origin, subLabel: e.target.value } : null,
-                    }))
-                  }
-                  className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-sky-200/70 outline-none placeholder:text-sky-200/30 hover:border-white/10 focus:border-sky-500/60 focus:bg-slate-950"
-                />
-                <p className="px-1 font-mono text-[10px] text-sky-200/50">
-                  {project.origin.lat.toFixed(4)}, {project.origin.lng.toFixed(4)}
-                </p>
-              </div>
-            )}
-            <PlaceSearch
-              label={project.origin ? 'Change origin' : 'Search for the dispatch hub'}
-              placeholder="Vijayawada — or 16.5062, 80.648"
-              testId="origin-search"
-              onPick={setOrigin}
-            />
-          </Section>
-
-          <Section
-            title="Destinations"
-            action={
-              <span className="text-xs text-slate-500">{project.destinations.length}</span>
-            }
+      {isDesktop ? (
+        <div className="flex min-h-0 flex-1">
+          {/*
+            The exporter configures its encoder for one frame size and one
+            timeline, then renders against the live stage. Editing anything
+            mid-render silently corrupts the file, so the whole editor is inert
+            until it finishes.
+          */}
+          <fieldset
+            disabled={rendering}
+            data-testid="editor-panel"
+            className="w-[380px] shrink-0 space-y-4 overflow-y-auto border-r border-white/10 p-4 disabled:opacity-60"
           >
-            <div className="mb-3">
-              <PlaceSearch
-                label="Add a town"
-                placeholder="Guntur — or 16.3067, 80.4365"
-                testId="destination-search"
-                onPick={addDestination}
-              />
+            {originSection}
+            {destinationsSection}
+            {settingsSection}
+          </fieldset>
+
+          <main className="flex min-h-0 flex-1 flex-col items-center gap-4 p-5">{previewPane}</main>
+
+          <aside className="w-72 shrink-0 space-y-4 overflow-y-auto border-l border-white/10 p-4">
+            {exportSection}
+            <div className="pt-2">{buildStamp}</div>
+          </aside>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex h-[46svh] shrink-0 flex-col items-center border-b border-white/10 p-2">
+            {previewPane}
+          </div>
+
+          <nav
+            role="tablist"
+            aria-label="Editor sections"
+            className="flex shrink-0 border-b border-white/10"
+          >
+            {MOBILE_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                data-testid={`tab-${t.id}`}
+                onClick={() => setTab(t.id)}
+                className={`flex-1 border-b-2 px-2 py-3 text-sm font-medium transition ${
+                  tab === t.id
+                    ? 'border-sky-400 text-sky-300'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* The export tab stays outside the lock so Cancel keeps working. */}
+          {tab === 'export' ? (
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+              {exportSection}
+              <div className="pt-1">{buildStamp}</div>
             </div>
-            <DestinationList
-              destinations={project.destinations}
-              onChange={setDestinations}
-              disabled={rendering}
-            />
-          </Section>
-
-          <Section title="Video settings">
-            <SettingsPanel
-              settings={project.settings}
-              destinationCount={project.destinations.length}
-              onChange={patchSettings}
-            />
-          </Section>
-        </fieldset>
-
-        <main className="flex min-h-0 flex-1 flex-col items-center gap-4 p-5">
-          {scene ? (
-            <Preview scene={scene} onStageReady={handleStage} disabled={rendering} />
           ) : (
-            <div
-              data-testid="no-origin"
-              className="flex flex-1 items-center justify-center text-sm text-slate-500"
+            <fieldset
+              disabled={rendering}
+              data-testid="editor-panel"
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3 disabled:opacity-60"
             >
-              Set an origin city to see the preview.
-            </div>
+              {tab === 'places' ? (
+                <>
+                  {projectControls}
+                  {originSection}
+                  {destinationsSection}
+                </>
+              ) : (
+                settingsSection
+              )}
+            </fieldset>
           )}
-        </main>
-
-        <aside className="w-72 shrink-0 space-y-4 overflow-y-auto border-l border-white/10 p-4">
-          <Section title="Export MP4">
-            <ExportPanel
-              stage={scene ? stage : null}
-              disabledReason={exportBlocked}
-              onRenderingChange={setRendering}
-            />
-          </Section>
-          {stage?.usedFallbackStyle && (
-            <p className="rounded-lg bg-amber-500/10 p-3 text-[11px] text-amber-200">
-              The OpenFreeMap basemap could not be reached, so the offline grid is being used
-              instead. Check your connection and reload to get real map tiles.
-            </p>
-          )}
-        </aside>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

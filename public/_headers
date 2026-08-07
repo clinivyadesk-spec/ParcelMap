@@ -1,13 +1,15 @@
-# Cloudflare Pages headers. This file is copied to the root of dist/ at build
-# time and read by Pages when serving.
+# Cloudflare Pages headers, copied to the root of dist/ at build time.
 #
-# Rules match the REQUEST PATH, not the file that ends up being served. A
-# visitor to the site requests "/", which does not match "/index.html" — an
-# earlier version of this file only listed the latter, so the entry point was
-# served with default caching. Browsers held onto stale HTML, that HTML
-# referenced the previous hashed bundle, and /assets/* is immutable, so the
-# old app stuck around indefinitely while a fresh per-deployment URL looked
-# correct. Both paths are listed now.
+# Two things this file has already got wrong, both worth remembering:
+#
+# 1. Rules match the REQUEST PATH, not the file served. A visitor requests
+#    "/", which does not match "/index.html". Listing only the latter meant
+#    the entry point was served with default caching while /assets/* stayed
+#    immutable, so a browser holding stale HTML kept loading the bundle that
+#    HTML referenced.
+# 2. Indented lines inside a rule are parsed as "Name: value" headers. A
+#    comment indented under a rule is a parse error, so every comment here
+#    starts at column zero.
 
 /
   Cache-Control: no-cache
@@ -15,12 +17,18 @@
 /index.html
   Cache-Control: no-cache
 
+/version.json
+  Cache-Control: no-cache
+
+# Vite fingerprints every asset filename, so these are safe to cache forever.
+
 /assets/*
-  # Vite fingerprints every asset filename, so these are safe to cache forever.
   Cache-Control: public, max-age=31536000, immutable
 
 # Security headers only. Deliberately no Cache-Control here: a broad rule
-# would collide with the two above and the precedence is not worth relying on.
+# would collide with the specific ones above and the precedence between
+# overlapping rules is not worth depending on.
+
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

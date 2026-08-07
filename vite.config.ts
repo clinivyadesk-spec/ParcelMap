@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -23,10 +23,35 @@ function buildId(): string {
   }
 }
 
+/**
+ * Emit /version.json alongside the app.
+ *
+ * The build id compiled into the bundle only tells you anything once the
+ * bundle loads, which is no help when the question is "is the right bundle
+ * being served at all". A plain static file answers that from a URL bar, with
+ * no JavaScript, no cache ambiguity and nothing to interpret.
+ */
+function versionFile(id: string): Plugin {
+  return {
+    name: 'parcelmap-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: `${JSON.stringify({ build: id, builtAt: new Date().toISOString() }, null, 2)}\n`,
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  define: {
-    __BUILD_ID__: JSON.stringify(buildId()),
-  },
+export default defineConfig(() => {
+  const id = buildId()
+  return {
+    plugins: [react(), tailwindcss(), versionFile(id)],
+    define: {
+      __BUILD_ID__: JSON.stringify(id),
+    },
+  }
 })

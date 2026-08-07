@@ -76,6 +76,19 @@ try {
     assert(seeded.destinations.length === 5 && seeded.destinations[0] === 'Ongole',
       'and the five delivery towns', JSON.stringify(seeded.destinations))
 
+    // version.json must exist and agree with the bundle, so the deployed
+    // build can be checked from a URL bar with no JavaScript involved.
+    const version = await page.evaluate(async () => {
+      const r = await fetch('/version.json', { cache: 'no-store' })
+      return r.ok ? await r.json() : null
+    })
+    console.log('  version.json:', JSON.stringify(version))
+    assert(version && typeof version.build === 'string',
+      '/version.json is served and names the build', JSON.stringify(version))
+
+    const noBanner = await page.$('[data-testid="update-banner"]')
+    assert(!noBanner, 'no update banner when the served build matches')
+
     const build = await page.textContent('[data-testid="build-id"]')
     assert(/^build \S+/.test(build?.trim() ?? ''),
       'the running build is identified in the UI', build)
@@ -113,6 +126,30 @@ try {
       { timeout: 15000 },
     )
     ok('"Load sample" replaces it with the current bundled sample')
+    await page.close()
+  }
+
+  // --- a stale shell notices a newer deploy ----------------------------------
+  {
+    const page = await newPage(browser, { viewport: DESKTOP })
+    // Pretend the server has moved on while this bundle stayed put. This is
+    // exactly the stale-HTML case that makes the app look like it is ignoring
+    // a deploy.
+    await page.route('**/version.json', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ build: 'newer99', builtAt: new Date().toISOString() }),
+      }),
+    )
+    await page.goto(`${server.url}/?style=offline`, { waitUntil: 'load' })
+
+    await page.waitForSelector('[data-testid="update-banner"]', { timeout: 20000 })
+    const text = (await page.textContent('[data-testid="update-banner"]')) ?? ''
+    assert(/newer99/.test(text),
+      'a stale bundle detects the newer deployed build and offers a reload', text.trim())
+    assert(await page.isVisible('[data-testid="update-reload"]'),
+      'and gives the user a reload button')
     await page.close()
   }
 

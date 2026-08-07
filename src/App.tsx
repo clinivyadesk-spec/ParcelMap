@@ -4,6 +4,8 @@ import { ExportPanel } from './components/ExportPanel.tsx'
 import { PlaceSearch } from './components/PlaceSearch.tsx'
 import { Preview } from './components/Preview.tsx'
 import { SettingsPanel } from './components/SettingsPanel.tsx'
+import { UpdateBanner } from './components/UpdateBanner.tsx'
+import { BUILD_ID } from './lib/buildInfo.ts'
 import { styleOverride } from './lib/devFlags.ts'
 import type { GeocodeResult } from './lib/geocode.ts'
 import { newId, sampleProject } from './lib/sampleData.ts'
@@ -322,12 +324,13 @@ export default function App() {
 
   const buildStamp = (
     <span data-testid="build-id" className="font-mono text-[10px] text-slate-600">
-      build {__BUILD_ID__}
+      build {BUILD_ID}
     </span>
   )
 
   return (
     <div className="flex h-full flex-col">
+      <UpdateBanner busy={rendering} />
       <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/10 px-3 py-2.5 lg:px-5 lg:py-3">
         <div className="flex items-baseline gap-2">
           <span className="text-base font-bold tracking-tight text-sky-400">ParcelMap</span>

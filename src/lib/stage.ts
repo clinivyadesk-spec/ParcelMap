@@ -11,7 +11,7 @@ import { drawOverlays, type PlacedLabel, type ProjectedLabel } from './overlays.
 import { installMapLibreWorker } from './maplibreWorker.ts'
 import { offlineStyle, resolveStyle } from './mapStyles.ts'
 import { computeTimeline, frameState, type FrameState, type Timeline } from './timeline.ts'
-import { ASPECT_SIZES, type AspectRatio, type Scene } from './types.ts'
+import { ASPECT_SIZES, type AspectRatio, type MapStyleId, type Scene } from './types.ts'
 
 const SRC_ARCS = 'pm-arcs'
 const SRC_PARCELS = 'pm-parcels'
@@ -70,6 +70,8 @@ export class MapStage {
   private lastLabelLayout: PlacedLabel[] = []
   /** Last payload pushed to each source, so unchanged frames skip setData. */
   private lastSourceData = new Map<string, string>()
+  /** Guards against an in-flight style swap being overtaken by a newer one. */
+  private styleEpoch = 0
 
   width: number
   height: number
@@ -341,18 +343,47 @@ export class MapStage {
     )
 
     if (aspectChanged) this.applySize(ASPECT_SIZES[scene.settings.aspect])
-    if (styleChanged) {
-      this.map.setStyle(resolveStyle(scene.settings.mapStyle))
-      this.map.once('styledata', () => {
-        this.lastSourceData.clear()
-        this.installLayers()
-        this.lastFrame = -1
-        this.renderFrame(Math.min(this.lastFrame < 0 ? 0 : this.lastFrame, this.timeline.totalFrames - 1))
-      })
-    }
 
     this.recomputeCamera()
+
+    if (styleChanged) {
+      // Hold onto where the user was before the swap resets our bookkeeping.
+      const restoreFrame = this.lastFrame < 0 ? 0 : this.lastFrame
+      void this.swapStyle(scene.settings.mapStyle, restoreFrame)
+    }
+
     this.lastFrame = -1
+  }
+
+  /**
+   * Replace the basemap and rebuild our layers on top of it. Waits for the
+   * new style to be genuinely loaded — `styledata` fires while the style is
+   * still settling, and addSource() throws if called too early — then returns
+   * the preview to the frame the user was looking at.
+   */
+  private async swapStyle(id: MapStyleId, restoreFrame: number): Promise<void> {
+    this.styleEpoch += 1
+    const epoch = this.styleEpoch
+
+    this.map.setStyle(resolveStyle(id))
+    const loaded = await this.awaitStyle(20000)
+
+    // A newer swap started while we were waiting; let that one finish.
+    if (this.destroyed || epoch !== this.styleEpoch) return
+
+    if (!loaded && id !== 'offline') {
+      console.warn('[ParcelMap] basemap style failed to load; falling back to the offline grid')
+      this.usedFallbackStyle = true
+      this.map.setStyle(offlineStyle())
+      await this.awaitStyle(10000)
+      if (this.destroyed || epoch !== this.styleEpoch) return
+    } else if (loaded) {
+      this.usedFallbackStyle = false
+    }
+
+    this.lastSourceData.clear()
+    this.installLayers()
+    this.renderFrame(Math.min(restoreFrame, this.timeline.totalFrames - 1))
   }
 
   /** Scale the output-sized stage down to fit the preview pane. */
@@ -588,7 +619,36 @@ export class MapStage {
       destinationLabels,
       destinationCount: destinations.length,
       totalKm: this.geometry.totalKm,
+      attribution: this.getAttribution(),
     })
+  }
+
+  /**
+   * Flatten the attribution declared by the style's sources into plain text.
+   * MapLibre renders its own attribution control as DOM, which the WebGL
+   * canvas capture cannot see, so the credit has to be drawn onto the overlay
+   * to make it into the exported video.
+   */
+  getAttribution(): string {
+    const style = this.map.getStyle()
+    if (!style) return ''
+
+    const parts = new Set<string>()
+    for (const source of Object.values(style.sources ?? {})) {
+      const attribution = (source as { attribution?: string }).attribution
+      if (!attribution) continue
+      // Style attribution is HTML; the canvas needs plain text.
+      const text = decodeEntities(attribution.replace(/<[^>]*>/g, ''))
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (text) parts.add(text)
+    }
+
+    if (parts.size === 0) {
+      // The bundled offline style carries no third-party data.
+      return this.scene.settings.mapStyle === 'offline' ? '' : '© OpenStreetMap contributors'
+    }
+    return [...parts].join(' · ')
   }
 
   /** Chip rectangles from the most recent frame. Used by the render tests. */
@@ -649,6 +709,21 @@ export class MapStage {
     this.map.remove()
     this.root.remove()
   }
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  '&copy;': '\u00a9',
+  '&amp;': '&',
+  '&nbsp;': ' ',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&#169;': '\u00a9',
+}
+
+function decodeEntities(input: string): string {
+  return input.replace(/&(?:copy|amp|nbsp|lt|gt|quot|#39|#169);/g, (m) => HTML_ENTITIES[m] ?? m)
 }
 
 function buildGeometry(scene: Scene): Geometry {

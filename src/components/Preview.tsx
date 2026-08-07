@@ -53,6 +53,14 @@ export function Preview({ scene, onStageReady, disabled }: PreviewProps) {
     stage.renderFrame(clamped)
   }, [scene])
 
+  // The exporter drives the stage directly while it runs, leaving it on the
+  // last frame it encoded. Put the preview back where the user left it once
+  // control returns.
+  useEffect(() => {
+    if (disabled) return
+    stageRef.current?.renderFrame(frameRef.current)
+  }, [disabled])
+
   const applyFrame = useCallback((next: number) => {
     const stage = stageRef.current
     if (!stage) return

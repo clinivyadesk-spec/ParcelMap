@@ -130,6 +130,21 @@ try {
     'the reorder control swaps adjacent destinations',
     `${namesBefore.slice(0, 2)} -> ${namesAfter.slice(0, 2)}`)
 
+  // --- drag reorder ---------------------------------------------------------
+  const beforeDrag = await page.locator('[data-testid="destination-name"]').evaluateAll(
+    (els) => els.map((e) => e.value),
+  )
+  await page
+    .locator('[data-testid="destination-item"]')
+    .first()
+    .dragTo(page.locator('[data-testid="destination-item"]').nth(3))
+  const afterDrag = await page.locator('[data-testid="destination-name"]').evaluateAll(
+    (els) => els.map((e) => e.value),
+  )
+  assert(afterDrag[3] === beforeDrag[0] && afterDrag[0] === beforeDrag[1],
+    'dragging a destination onto a later row moves it there',
+    `${JSON.stringify(beforeDrag.slice(0, 4))} -> ${JSON.stringify(afterDrag.slice(0, 4))}`)
+
   // --- remove ---------------------------------------------------------------
   await page.locator('[data-testid="remove-destination"]').first().click()
   await page.waitForFunction(

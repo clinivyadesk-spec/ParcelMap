@@ -12,11 +12,7 @@ const browser = await launchBrowser()
 try {
   const page = await newPage(browser)
   await page.goto(`${server.url}/?style=offline`, { waitUntil: 'load' })
-  await page.waitForFunction(
-    () => document.querySelector('[data-testid="ready-flag"]')?.textContent === 'stage-ready',
-    undefined,
-    { timeout: 90000 },
-  )
+  await page.waitForFunction(() => window.__stage != null, undefined, { timeout: 90000 })
   ok('stage reported ready')
 
   // Let the basemap settle before we look at pixels.

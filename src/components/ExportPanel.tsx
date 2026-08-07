@@ -62,8 +62,7 @@ export function ExportPanel({ stage, disabledReason, onRenderingChange }: Export
     } finally {
       setProgress(null)
       abortRef.current = null
-      // Put the preview back at the start rather than on the last frame.
-      stage?.renderFrame(0)
+      // The preview restores its own scrub position once rendering clears.
     }
   }, [stage])
 

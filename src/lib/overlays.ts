@@ -24,6 +24,12 @@ export interface OverlayInput {
   destinationLabels: ProjectedLabel[]
   destinationCount: number
   totalKm: number
+  /**
+   * Basemap credit, already flattened to plain text. MapLibre's own
+   * attribution control is a DOM node and never lands in the WebGL canvas, so
+   * it has to be drawn here to survive into the exported file.
+   */
+  attribution: string
 }
 
 const FONT_STACK = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif'
@@ -328,18 +334,45 @@ function drawCounter(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: 
   void width
 }
 
+/** Basemap credit, baked into the frame so the exported MP4 carries it. */
+function drawAttribution(
+  ctx: CanvasRenderingContext2D,
+  input: OverlayInput,
+  scale: number,
+): void {
+  if (!input.attribution) return
+
+  ctx.save()
+  ctx.font = font(500, 17 * scale)
+  ctx.textBaseline = 'alphabetic'
+  ctx.textAlign = 'right'
+
+  const text = input.attribution
+  const w = ctx.measureText(text).width
+  const x = input.width - 20 * scale
+  const y = input.height - 22 * scale
+
+  ctx.fillStyle = 'rgba(6, 12, 24, 0.55)'
+  roundRect(ctx, x - w - 14 * scale, y - 18 * scale, w + 20 * scale, 26 * scale, 6 * scale)
+  ctx.fill()
+
+  ctx.fillStyle = 'rgba(226, 240, 255, 0.72)'
+  ctx.fillText(text, x - 4 * scale, y)
+  ctx.restore()
+}
+
 function drawLogo(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: number): void {
   const { settings, width, height, state } = input
   if (!settings.logoText) return
 
   ctx.save()
-  // Sits above MapLibre's attribution strip, which we deliberately keep visible.
+  // Sits above the attribution strip drawn below it.
   ctx.globalAlpha = 0.9 * clamp01(state.title)
   ctx.font = font(700, 24 * scale)
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'right'
   const x = width - 28 * scale
-  const y = height - 52 * scale
+  const y = height - 62 * scale
 
   const text = settings.logoText
   const w = ctx.measureText(text).width
@@ -412,6 +445,7 @@ export function drawOverlays(
 
   drawCounter(ctx, input, scale)
   drawLogo(ctx, input, scale)
+  drawAttribution(ctx, input, scale)
   drawProgressBar(ctx, input, scale)
 
   return placed

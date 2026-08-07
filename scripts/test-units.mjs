@@ -204,3 +204,78 @@ test('easings are clamped and hit their endpoints', () => {
   assert.equal(easing.easeOutBack(0), 0)
   assert.ok(Math.abs(easing.easeOutBack(1) - 1) < 1e-12)
 })
+
+// --- coordinate fallback parser --------------------------------------------
+
+const geocode = await import('../src/lib/geocode.ts')
+const array = await import('../src/lib/array.ts')
+const color = await import('../src/lib/color.ts')
+
+test('parseLatLng accepts the shapes people actually paste', () => {
+  const cases = [
+    ['16.5062, 80.648', 16.5062, 80.648],
+    ['16.5062,80.648', 16.5062, 80.648],
+    ['16.5062 80.648', 16.5062, 80.648],
+    ['  16.5062 ,  80.648  ', 16.5062, 80.648],
+    ['-33.8688, 151.2093', -33.8688, 151.2093],
+    ['0, 0', 0, 0],
+  ]
+  for (const [input, lat, lng] of cases) {
+    const parsed = geocode.parseLatLng(input)
+    assert.ok(parsed, `expected ${input} to parse`)
+    assert.equal(parsed.lat, lat)
+    assert.equal(parsed.lng, lng)
+  }
+})
+
+test('parseLatLng rejects anything that is not a coordinate pair', () => {
+  const bad = [
+    'Vijayawada',
+    '',
+    '16.5062',
+    '16.5062, 80.648, 12',
+    '91, 80',        // latitude out of range
+    '-91, 80',
+    '16, 181',       // longitude out of range
+    '16, -181',
+    'abc, def',
+    '16.5062;80.648',
+  ]
+  for (const input of bad) {
+    assert.equal(geocode.parseLatLng(input), null, `expected ${JSON.stringify(input)} to be rejected`)
+  }
+})
+
+// --- list reordering --------------------------------------------------------
+
+test('reorder moves an item and leaves the rest in order', () => {
+  const items = ['a', 'b', 'c', 'd']
+  assert.deepEqual(array.reorder(items, 0, 2), ['b', 'c', 'a', 'd'])
+  assert.deepEqual(array.reorder(items, 3, 0), ['d', 'a', 'b', 'c'])
+  assert.deepEqual(array.reorder(items, 1, 1), items)
+  // The input is never mutated.
+  assert.deepEqual(items, ['a', 'b', 'c', 'd'])
+})
+
+test('reorder ignores out-of-range indices', () => {
+  const items = ['a', 'b', 'c']
+  for (const [from, to] of [[-1, 1], [1, -1], [5, 0], [0, 5]]) {
+    assert.equal(array.reorder(items, from, to), items, `${from}->${to} should be a no-op`)
+  }
+})
+
+// --- colour helpers ---------------------------------------------------------
+
+test('parseHex handles both short and long form, and bad input', () => {
+  assert.deepEqual(color.parseHex('#22c55e'), { r: 0x22, g: 0xc5, b: 0x5e })
+  assert.deepEqual(color.parseHex('22c55e'), { r: 0x22, g: 0xc5, b: 0x5e })
+  assert.deepEqual(color.parseHex('#f0a'), { r: 0xff, g: 0x00, b: 0xaa })
+  // Falls back to the default accent rather than producing NaN channels.
+  const fallback = color.parseHex('not a colour')
+  assert.ok(Number.isFinite(fallback.r) && Number.isFinite(fallback.g) && Number.isFinite(fallback.b))
+})
+
+test('rgba clamps alpha into range', () => {
+  assert.equal(color.rgba('#000000', -1), 'rgba(0, 0, 0, 0)')
+  assert.equal(color.rgba('#000000', 2), 'rgba(0, 0, 0, 1)')
+})

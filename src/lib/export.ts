@@ -45,6 +45,16 @@ export interface ExportResult {
 export class ExportError extends Error {}
 
 /**
+ * Thrown when the user cancels. Cancelling is a normal outcome, not a
+ * failure, so callers should not surface this as an error.
+ */
+export class ExportCancelledError extends ExportError {
+  constructor() {
+    super('Export cancelled')
+  }
+}
+
+/**
  * Wait for the map to have nothing left to paint. The stage forces a
  * synchronous redraw first, so this terminates even in a throttled tab.
  */
@@ -161,8 +171,25 @@ export async function exportVideo(options: ExportOptions): Promise<ExportResult>
 
   try {
     for (let i = 0; i < totalFrames; i++) {
-      if (signal?.aborted) throw new ExportError('Export cancelled')
+      if (signal?.aborted) throw new ExportCancelledError()
       if (encoderError) throw encoderError
+
+      // The encoder is configured once, for one frame size, and the scratch
+      // canvas is allocated to match. If the scene changes underneath us the
+      // frames stop matching that configuration and the file is silently
+      // corrupt, so refuse to keep going. The editor is locked while a render
+      // is running; this is the backstop for anything that slips past it.
+      if (stage.width !== width || stage.height !== height) {
+        throw new ExportError(
+          `The video size changed from ${width}x${height} to ${stage.width}x${stage.height} ` +
+            'while rendering. Nothing was saved — please start the render again.',
+        )
+      }
+      if (stage.getTimeline().totalFrames !== timeline.totalFrames) {
+        throw new ExportError(
+          'The animation changed while rendering. Nothing was saved — please start the render again.',
+        )
+      }
 
       // 1. Advance every animated source and the camera to this frame.
       stage.renderFrame(i)

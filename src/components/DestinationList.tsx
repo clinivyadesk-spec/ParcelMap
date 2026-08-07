@@ -5,9 +5,11 @@ import type { Place } from '../lib/types.ts'
 interface DestinationListProps {
   destinations: Place[]
   onChange: (next: Place[]) => void
+  /** Drag reorder is not a form control, so a disabled fieldset misses it. */
+  disabled?: boolean
 }
 
-export function DestinationList({ destinations, onChange }: DestinationListProps) {
+export function DestinationList({ destinations, onChange, disabled }: DestinationListProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
 
@@ -37,7 +39,7 @@ export function DestinationList({ destinations, onChange }: DestinationListProps
         <li
           key={dest.id}
           data-testid="destination-item"
-          draggable
+          draggable={!disabled}
           onDragStart={(e) => {
             setDragIndex(index)
             e.dataTransfer.effectAllowed = 'move'

@@ -102,7 +102,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: nu
     ctx.textBaseline = 'alphabetic'
     ctx.shadowColor = 'rgba(0,0,0,0.45)'
     ctx.shadowBlur = 18 * scale
-    ctx.fillText(settings.title, left, y, width - left * 2)
+    ctx.fillText(truncateToWidth(ctx, settings.title, width - left * 2), left, y)
     ctx.restore()
     y += 54 * scale
   }
@@ -115,7 +115,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: nu
     ctx.font = font(500, 30 * scale)
     ctx.shadowColor = 'rgba(0,0,0,0.4)'
     ctx.shadowBlur = 12 * scale
-    ctx.fillText(settings.subtitle, left, y, width - left * 2)
+    ctx.fillText(truncateToWidth(ctx, settings.subtitle, width - left * 2), left, y)
     ctx.restore()
     y += 34 * scale
   }
@@ -126,6 +126,29 @@ function drawTitle(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: nu
   ctx.fillStyle = settings.arcColor
   ctx.fillRect(left, y - 8 * scale, 96 * scale * state.title, 6 * scale)
   ctx.restore()
+}
+
+/**
+ * Shorten `text` with an ellipsis until it fits `maxWidth` at the context's
+ * current font. Canvas `fillText` has a maxWidth argument, but it squashes
+ * the glyphs horizontally rather than truncating, which looks broken.
+ */
+function truncateToWidth(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string {
+  if (maxWidth <= 0 || ctx.measureText(text).width <= maxWidth) return text
+
+  const ellipsis = '…'
+  let low = 0
+  let high = text.length
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (ctx.measureText(text.slice(0, mid) + ellipsis).width <= maxWidth) low = mid
+    else high = mid - 1
+  }
+  return low > 0 ? text.slice(0, low) + ellipsis : ellipsis
 }
 
 /**
@@ -176,12 +199,20 @@ function drawPlaceLabel(
   const padY = 10 * chip
   const gap = label.sub ? 5 * chip : 0
 
+  // Nothing stops a user typing a very long name. Left unchecked the chip
+  // grows past the frame edge and the placement search has nowhere to put it.
+  const maxTextWidth = input.width * (isHub ? 0.62 : 0.5) - padX * 2
+
   ctx.font = font(isHub ? 800 : 700, nameSize)
-  const nameWidth = ctx.measureText(label.text).width
+  const name = truncateToWidth(ctx, label.text, maxTextWidth)
+  const nameWidth = ctx.measureText(name).width
+
+  let sub = label.sub
   let subWidth = 0
-  if (label.sub) {
+  if (sub) {
     ctx.font = font(600, subSize)
-    subWidth = ctx.measureText(label.sub).width
+    sub = truncateToWidth(ctx, sub, maxTextWidth)
+    subWidth = ctx.measureText(sub).width
   }
 
   const boxW = Math.max(nameWidth, subWidth) + padX * 2
@@ -299,16 +330,16 @@ function drawPlaceLabel(
   ctx.fillStyle = isHub ? (onAccentIsDark ? '#0b1220' : '#ffffff') : '#ffffff'
   ctx.textBaseline = 'top'
   ctx.font = font(isHub ? 800 : 700, nameSize)
-  ctx.fillText(label.text, x + padX, y + padY)
+  ctx.fillText(name, x + padX, y + padY)
 
-  if (label.sub) {
+  if (sub) {
     ctx.font = font(600, subSize)
     ctx.fillStyle = isHub
       ? onAccentIsDark
         ? 'rgba(11, 18, 32, 0.75)'
         : 'rgba(255,255,255,0.82)'
       : rgba(accent, 0.95)
-    ctx.fillText(label.sub, x + padX, y + padY + nameSize + gap)
+    ctx.fillText(sub, x + padX, y + padY + nameSize + gap)
   }
 
   ctx.restore()

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { codecOverride, frameCapOverride } from '../lib/devFlags.ts'
-import { downloadResult, exportVideo, type ExportProgress, type ExportResult } from '../lib/export.ts'
+import {
+  downloadResult,
+  ExportCancelledError,
+  exportVideo,
+  type ExportProgress,
+  type ExportResult,
+} from '../lib/export.ts'
 import type { MapStage } from '../lib/stage.ts'
 import { FPS, formatDuration } from '../lib/timeline.ts'
 import { detectWebCodecs } from '../lib/webcodecs.ts'
@@ -40,6 +46,15 @@ export function ExportPanel({ stage, disabledReason, onRenderingChange }: Export
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  // A render takes minutes and lives entirely in this tab. Closing it throws
+  // the work away, so make the browser ask first.
+  useEffect(() => {
+    if (!rendering) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [rendering])
+
   const handleRender = useCallback(async () => {
     if (!stage) return
     setError(null)
@@ -58,7 +73,10 @@ export function ExportPanel({ stage, disabledReason, onRenderingChange }: Export
       setResult(output)
       downloadResult(output)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      // Cancelling is something the user asked for, not a failure.
+      if (!(err instanceof ExportCancelledError)) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
     } finally {
       setProgress(null)
       abortRef.current = null

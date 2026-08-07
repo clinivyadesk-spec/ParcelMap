@@ -155,9 +155,19 @@ export class MapStage {
     })
 
     const stage = new MapStage(init, map, overlay, mapHost, root)
-    await stage.whenStyleLoaded()
-    stage.installLayers()
-    stage.setScene(init.scene)
+    try {
+      await stage.whenStyleLoaded()
+      if (!stage.installLayers()) {
+        throw new Error(
+          'The basemap could not be loaded. Check your connection and reload the page.',
+        )
+      }
+      stage.setScene(init.scene)
+    } catch (err) {
+      // Never leave a half-built map (and its WebGL context) attached.
+      stage.destroy()
+      throw err
+    }
     return stage
   }
 
@@ -215,8 +225,16 @@ export class MapStage {
     })
   }
 
-  private installLayers(): void {
+  /**
+   * Add our sources and layers on top of whatever basemap is loaded.
+   *
+   * Returns false when the style is not ready — MapLibre throws from
+   * addSource() if it is called before the style settles, and this runs from
+   * an async style swap where that is a real possibility.
+   */
+  private installLayers(): boolean {
     const map = this.map
+    if (!map.isStyleLoaded()) return false
     this.lastSourceData.clear()
     for (const id of [SRC_PULSE, SRC_ARCS, SRC_PARCELS, SRC_PINS, SRC_HUB]) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY as never })
@@ -339,6 +357,8 @@ export class MapStage {
         },
       })
     }
+
+    return true
   }
 
   /** Swap in new places/settings and recompute geometry, timeline and camera. */
@@ -392,7 +412,20 @@ export class MapStage {
     }
 
     this.lastSourceData.clear()
-    this.installLayers()
+
+    if (!this.installLayers()) {
+      // The new style never settled. Rather than leave the user with a
+      // basemap and no arcs on it, drop back to the bundled style, which has
+      // no network dependency and always loads.
+      console.warn('[ParcelMap] style did not settle after the swap; using the offline grid')
+      this.usedFallbackStyle = true
+      this.map.setStyle(offlineStyle())
+      await this.awaitStyle(10000)
+      if (this.destroyed || epoch !== this.styleEpoch) return
+      this.lastSourceData.clear()
+      this.installLayers()
+    }
+
     this.renderFrame(Math.min(restoreFrame, this.timeline.totalFrames - 1))
   }
 

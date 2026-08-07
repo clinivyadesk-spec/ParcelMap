@@ -139,12 +139,18 @@ export default function App() {
           </span>
         </div>
 
+        {/* Swapping or clearing the project mid-render corrupts the file too. */}
+        <fieldset
+          disabled={rendering}
+          data-testid="project-controls"
+          className="ml-auto flex flex-wrap items-center gap-3 disabled:opacity-60"
+        >
         <input
           value={project.name}
           data-testid="project-name"
           aria-label="Project name"
           onChange={(e) => setProject((p) => ({ ...p, name: e.target.value }))}
-          className="ml-auto w-52 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 text-sm outline-none focus:border-sky-500/60"
+          className="w-52 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 text-sm outline-none focus:border-sky-500/60"
         />
 
         <select
@@ -194,13 +200,24 @@ export default function App() {
         >
           Delete
         </button>
+        </fieldset>
         <span data-testid="save-status" className="w-28 text-right text-[11px] text-slate-600">
           {pending ? 'saving…' : saved ? `saved ${saved}` : ''}
         </span>
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <div className="w-[380px] shrink-0 space-y-4 overflow-y-auto border-r border-white/10 p-4">
+        {/*
+          The exporter configures its encoder for one frame size and one
+          timeline, then renders against the live stage. Editing anything
+          mid-render silently corrupts the file, so the whole editor is inert
+          until it finishes.
+        */}
+        <fieldset
+          disabled={rendering}
+          data-testid="editor-panel"
+          className="w-[380px] shrink-0 space-y-4 overflow-y-auto border-r border-white/10 p-4 disabled:opacity-60"
+        >
           <Section title="Origin">
             {project.origin && (
               <div
@@ -259,7 +276,11 @@ export default function App() {
                 onPick={addDestination}
               />
             </div>
-            <DestinationList destinations={project.destinations} onChange={setDestinations} />
+            <DestinationList
+              destinations={project.destinations}
+              onChange={setDestinations}
+              disabled={rendering}
+            />
           </Section>
 
           <Section title="Video settings">
@@ -269,7 +290,7 @@ export default function App() {
               onChange={patchSettings}
             />
           </Section>
-        </div>
+        </fieldset>
 
         <main className="flex min-h-0 flex-1 flex-col items-center gap-4 p-5">
           {scene ? (

@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type Place, type Project } from './types'
+import { DEFAULT_SETTINGS, type Place, type Project } from './types.ts'
 
 let idCounter = 0
 export function newId(prefix = 'p'): string {

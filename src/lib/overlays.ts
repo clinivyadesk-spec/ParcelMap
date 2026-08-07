@@ -1,7 +1,7 @@
-import { luminance, rgba, shade } from './color'
-import { clamp, clamp01, easeOutCubic, lerp } from './easing'
-import type { FrameState } from './timeline'
-import type { VideoSettings } from './types'
+import { luminance, rgba, shade } from './color.ts'
+import { clamp, clamp01, easeOutCubic, lerp } from './easing.ts'
+import type { FrameState } from './timeline.ts'
+import type { VideoSettings } from './types.ts'
 
 export interface ProjectedLabel {
   /** Screen position of the marker this label belongs to, in output pixels. */
@@ -39,8 +39,10 @@ interface Rect {
   h: number
 }
 
-function overlaps(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+/** Where a chip actually ended up. Returned so tests can assert on layout. */
+export interface PlacedLabel extends Rect {
+  text: string
+  variant: 'hub' | 'destination'
 }
 
 function roundRect(
@@ -120,6 +122,22 @@ function drawTitle(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: nu
   ctx.restore()
 }
 
+/** Closest point on a rectangle's border to `p`, used to aim leader lines. */
+function anchorOn(rect: Rect, px: number, py: number): { x: number; y: number } {
+  const cx = clamp(px, rect.x, rect.x + rect.w)
+  const cy = clamp(py, rect.y, rect.y + rect.h)
+  // Push the anchor out to whichever edge is nearest.
+  const dLeft = Math.abs(px - rect.x)
+  const dRight = Math.abs(px - (rect.x + rect.w))
+  const dTop = Math.abs(py - rect.y)
+  const dBottom = Math.abs(py - (rect.y + rect.h))
+  const min = Math.min(dLeft, dRight, dTop, dBottom)
+  if (min === dLeft) return { x: rect.x, y: cy }
+  if (min === dRight) return { x: rect.x + rect.w, y: cy }
+  if (min === dTop) return { x: cx, y: rect.y }
+  return { x: cx, y: rect.y + rect.h }
+}
+
 function drawPlaceLabel(
   ctx: CanvasRenderingContext2D,
   label: ProjectedLabel,
@@ -127,8 +145,8 @@ function drawPlaceLabel(
   scale: number,
   occupied: Rect[],
   variant: 'hub' | 'destination',
-): void {
-  if (label.opacity <= 0.01) return
+): PlacedLabel | null {
+  if (label.opacity <= 0.01) return null
 
   const isHub = variant === 'hub'
   const nameSize = (isHub ? 34 : 27) * scale
@@ -148,40 +166,97 @@ function drawPlaceLabel(
   const boxW = Math.max(nameWidth, subWidth) + padX * 2
   const boxH = nameSize + (label.sub ? subSize + gap : 0) + padY * 2
 
-  // Prefer sitting above-right of the marker, flip when close to an edge.
-  const markerGap = (isHub ? 30 : 22) * scale
-  let x = label.x + markerGap
-  if (x + boxW > input.width - 24 * scale) x = label.x - markerGap - boxW
-  x = clamp(x, 20 * scale, Math.max(20 * scale, input.width - boxW - 20 * scale))
+  // Score every candidate slot and take the best. A greedy walk that stops at
+  // the first free spot can run out of attempts and leave the chip sitting on
+  // top of another one; scoring always yields the least-bad placement.
+  const markerGap = (isHub ? 34 : 26) * scale
+  const step = 10 * scale
+  const minX = 20 * scale
+  const maxX = Math.max(minX, input.width - boxW - 20 * scale)
+  const minY = 12 * scale
+  const maxY = Math.max(minY, input.height - boxH - 12 * scale)
+  const preferLeft = label.x + markerGap + boxW > input.width - 24 * scale
 
-  let y = label.y - boxH / 2
-  const rect: Rect = { x, y, w: boxW, h: boxH }
+  let best: Rect | null = null
+  let bestScore = Infinity
 
-  // Greedy de-overlap: nudge down, then up, until it finds a free slot.
-  const step = 8 * scale
-  for (let attempt = 0; attempt < 24; attempt++) {
-    if (!occupied.some((r) => overlaps(rect, r))) break
-    const dir = attempt % 2 === 0 ? 1 : -1
-    const magnitude = Math.ceil((attempt + 1) / 2) * step * 2
-    rect.y = y + dir * magnitude
+  for (const side of preferLeft ? [-1, 1] : [1, -1]) {
+    const candidateX = clamp(
+      side === 1 ? label.x + markerGap : label.x - markerGap - boxW,
+      minX,
+      maxX,
+    )
+    for (let i = 0; i <= 32; i++) {
+      // 0, +1, -1, +2, -2, ... in units of `step`.
+      const dy = (i === 0 ? 0 : Math.ceil(i / 2) * (i % 2 === 1 ? 1 : -1)) * step
+      const candidate: Rect = {
+        x: candidateX,
+        y: clamp(label.y - boxH / 2 + dy, minY, maxY),
+        w: boxW,
+        h: boxH,
+      }
+
+      let overlapArea = 0
+      for (const r of occupied) {
+        const ox = Math.min(candidate.x + candidate.w, r.x + r.w) - Math.max(candidate.x, r.x)
+        const oy = Math.min(candidate.y + candidate.h, r.y + r.h) - Math.max(candidate.y, r.y)
+        if (ox > 0 && oy > 0) overlapArea += ox * oy
+      }
+
+      // Overlap dominates; distance from the marker only breaks ties.
+      const distance = Math.hypot(
+        candidate.x + boxW / 2 - label.x,
+        candidate.y + boxH / 2 - label.y,
+      )
+      const score = overlapArea * 1000 + distance
+      if (score < bestScore) {
+        bestScore = score
+        best = candidate
+      }
+      if (overlapArea === 0 && i === 0) break
+    }
+    if (bestScore < 1000) break
   }
-  y = clamp(rect.y, 12 * scale, input.height - boxH - 12 * scale)
-  rect.y = y
-  occupied.push({ x: rect.x - 4, y: rect.y - 4, w: rect.w + 8, h: rect.h + 8 })
+
+  const rect: Rect = best ?? { x: clamp(label.x, minX, maxX), y: clamp(label.y, minY, maxY), w: boxW, h: boxH }
+  const x = rect.x
+  const y = rect.y
+  const margin = 6 * scale
+  occupied.push({
+    x: rect.x - margin,
+    y: rect.y - margin,
+    w: rect.w + margin * 2,
+    h: rect.h + margin * 2,
+  })
 
   ctx.save()
   ctx.globalAlpha = label.opacity
   // Slide in from the marker as the pin lands.
-  const slide = lerp(10 * scale, 0, easeOutCubic(label.drop))
-  ctx.translate(0, slide)
+  ctx.translate(0, lerp(10 * scale, 0, easeOutCubic(label.drop)))
 
   const accent = input.settings.arcColor
+
+  // Leader line back to the marker, so a displaced chip still reads as
+  // belonging to its pin.
+  const anchor = anchorOn(rect, label.x, label.y)
+  const leaderLength = Math.hypot(anchor.x - label.x, anchor.y - label.y)
+  if (leaderLength > 4 * scale) {
+    ctx.strokeStyle = rgba(accent, 0.75)
+    ctx.lineWidth = 2 * scale
+    ctx.setLineDash([6 * scale, 4 * scale])
+    ctx.beginPath()
+    ctx.moveTo(label.x, label.y)
+    ctx.lineTo(anchor.x, anchor.y)
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+
   if (isHub) {
     ctx.fillStyle = accent
     ctx.shadowColor = rgba(accent, 0.5)
     ctx.shadowBlur = 22 * scale
   } else {
-    ctx.fillStyle = 'rgba(10, 16, 28, 0.86)'
+    ctx.fillStyle = 'rgba(10, 16, 28, 0.88)'
     ctx.shadowColor = 'rgba(0,0,0,0.35)'
     ctx.shadowBlur = 14 * scale
   }
@@ -213,6 +288,7 @@ function drawPlaceLabel(
   }
 
   ctx.restore()
+  return { text: label.text, variant, ...rect }
 }
 
 function drawCounter(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: number): void {
@@ -292,7 +368,10 @@ function drawProgressBar(ctx: CanvasRenderingContext2D, input: OverlayInput, sca
  * by the live preview and by the export loop, which is what keeps the two
  * pixel-identical.
  */
-export function drawOverlays(ctx: CanvasRenderingContext2D, input: OverlayInput): void {
+export function drawOverlays(
+  ctx: CanvasRenderingContext2D,
+  input: OverlayInput,
+): PlacedLabel[] {
   const { width, height } = input
   const scale = Math.min(width, height) / 1080
 
@@ -302,17 +381,38 @@ export function drawOverlays(ctx: CanvasRenderingContext2D, input: OverlayInput)
   drawScrims(ctx, width, height)
   drawTitle(ctx, input, scale)
 
+  // Keep chips off the markers themselves: every visible marker reserves a
+  // small box before any label is placed.
+  const occupied: Rect[] = []
+  const markerKeepOut = 30 * scale
+  const reserveMarker = (label: ProjectedLabel) => {
+    occupied.push({
+      x: label.x - markerKeepOut,
+      y: label.y - markerKeepOut,
+      w: markerKeepOut * 2,
+      h: markerKeepOut * 2,
+    })
+  }
+  if (input.hubLabel) reserveMarker(input.hubLabel)
+  for (const label of input.destinationLabels) reserveMarker(label)
+
   // The hub claims its slot first so destination chips get nudged around it
   // rather than the other way round.
-  const occupied: Rect[] = []
+  const placed: PlacedLabel[] = []
   if (input.hubLabel) {
-    drawPlaceLabel(ctx, input.hubLabel, input, scale, occupied, 'hub')
+    const hub = drawPlaceLabel(ctx, input.hubLabel, input, scale, occupied, 'hub')
+    if (hub) placed.push(hub)
   }
-  for (const label of input.destinationLabels) {
-    drawPlaceLabel(ctx, label, input, scale, occupied, 'destination')
+  // Place top-to-bottom so the packing is stable as more towns appear.
+  const ordered = [...input.destinationLabels].sort((a, b) => a.y - b.y)
+  for (const label of ordered) {
+    const chip = drawPlaceLabel(ctx, label, input, scale, occupied, 'destination')
+    if (chip) placed.push(chip)
   }
 
   drawCounter(ctx, input, scale)
   drawLogo(ctx, input, scale)
   drawProgressBar(ctx, input, scale)
+
+  return placed
 }

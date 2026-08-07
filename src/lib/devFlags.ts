@@ -1,4 +1,4 @@
-import type { MapStyleId } from './types'
+import type { MapStyleId } from './types.ts'
 
 /**
  * Query-string escape hatches used by the automated render tests (and handy

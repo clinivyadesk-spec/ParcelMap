@@ -1,4 +1,4 @@
-import { clamp01, easeInOutCubic, easeOutBack, easeOutCubic, span } from './easing'
+import { clamp01, easeInOutCubic, easeOutBack, easeOutCubic, span } from './easing.ts'
 
 export const FPS = 30
 

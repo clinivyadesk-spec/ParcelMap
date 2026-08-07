@@ -1,6 +1,6 @@
 import { point } from '@turf/helpers'
 import distance from '@turf/distance'
-import type { Place } from './types'
+import type { Place } from './types.ts'
 
 export type Vec2 = [number, number]
 /** `[lng, lat]`, GeoJSON order. */

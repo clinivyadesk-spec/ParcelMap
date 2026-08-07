@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { MapStage } from '../lib/stage'
-import { ASPECT_SIZES, type Scene } from '../lib/types'
+import { MapStage } from '../lib/stage.ts'
+import { ASPECT_SIZES, type Scene } from '../lib/types.ts'
 
 interface StageViewProps {
   scene: Scene

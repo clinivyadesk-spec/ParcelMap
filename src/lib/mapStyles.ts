@@ -1,5 +1,5 @@
 import type { StyleSpecification } from 'maplibre-gl'
-import type { MapStyleId } from './types'
+import type { MapStyleId } from './types.ts'
 
 /**
  * OpenFreeMap serves these styles and its tiles with no API key and no

@@ -4,14 +4,14 @@ import {
   Map as MapLibreMap,
   type StyleSpecification,
 } from 'maplibre-gl'
-import { rgba, shade } from './color'
-import { clamp, clamp01, lerp } from './easing'
-import { boundsOf, buildArc, sliceArc, type Arc } from './geo'
-import { drawOverlays, type ProjectedLabel } from './overlays'
-import { installMapLibreWorker } from './maplibreWorker'
-import { offlineStyle, resolveStyle } from './mapStyles'
-import { computeTimeline, frameState, type FrameState, type Timeline } from './timeline'
-import { ASPECT_SIZES, type Scene } from './types'
+import { rgba, shade } from './color.ts'
+import { clamp, clamp01, lerp } from './easing.ts'
+import { boundsOf, buildArc, sliceArc, type Arc } from './geo.ts'
+import { drawOverlays, type PlacedLabel, type ProjectedLabel } from './overlays.ts'
+import { installMapLibreWorker } from './maplibreWorker.ts'
+import { offlineStyle, resolveStyle } from './mapStyles.ts'
+import { computeTimeline, frameState, type FrameState, type Timeline } from './timeline.ts'
+import { ASPECT_SIZES, type AspectRatio, type Scene } from './types.ts'
 
 const SRC_ARCS = 'pm-arcs'
 const SRC_PARCELS = 'pm-parcels'
@@ -39,6 +39,13 @@ export interface StageInit {
   scene: Scene
 }
 
+/** Camera padding as a fraction of each dimension, per aspect ratio. */
+const CAMERA_PADDING: Record<AspectRatio, { top: number; bottom: number; left: number; right: number }> = {
+  '9:16': { top: 0.22, bottom: 0.22, left: 0.06, right: 0.06 },
+  '1:1': { top: 0.17, bottom: 0.19, left: 0.07, right: 0.07 },
+  '16:9': { top: 0.14, bottom: 0.14, left: 0.26, right: 0.08 },
+}
+
 /**
  * Owns the MapLibre instance and the overlay canvas, and turns a frame number
  * into pixels. The live preview and the MP4 export both drive this same
@@ -60,6 +67,7 @@ export class MapStage {
   private lastFrame = -1
   /** True when the requested basemap was unreachable and we fell back. */
   usedFallbackStyle = false
+  private lastLabelLayout: PlacedLabel[] = []
 
   width: number
   height: number
@@ -367,11 +375,15 @@ export class MapStage {
     const bounds = boundsOf(places)
     if (!bounds) return
 
+    // Reserve the zones the overlays live in: the title band at the top and
+    // the counter band at the bottom. In 16:9 both sit on the left, so the
+    // geography is pushed right instead.
+    const fractions = CAMERA_PADDING[this.scene.settings.aspect]
     const padding = {
-      top: Math.round(this.height * 0.2),
-      bottom: Math.round(this.height * 0.2),
-      left: Math.round(this.width * 0.1),
-      right: Math.round(this.width * 0.1),
+      top: Math.round(this.height * fractions.top),
+      bottom: Math.round(this.height * fractions.bottom),
+      left: Math.round(this.width * fractions.left),
+      right: Math.round(this.width * fractions.right),
     }
 
     const camera = this.map.cameraForBounds(
@@ -553,7 +565,7 @@ export class MapStage {
       })
     }
 
-    drawOverlays(this.overlayCtx, {
+    this.lastLabelLayout = drawOverlays(this.overlayCtx, {
       width: this.width,
       height: this.height,
       settings,
@@ -563,6 +575,11 @@ export class MapStage {
       destinationCount: destinations.length,
       totalKm: this.geometry.totalKm,
     })
+  }
+
+  /** Chip rectangles from the most recent frame. Used by the render tests. */
+  getLabelLayout(): PlacedLabel[] {
+    return this.lastLabelLayout
   }
 
   /**

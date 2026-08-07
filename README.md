@@ -146,8 +146,18 @@ The quickest path, and it auto-deploys on every push.
    - Framework preset: **Vite** (or None)
    - Build command: `npm run build`
    - Build output directory: `dist`
-   - Node version: **22** (add a `NODE_VERSION=22` build variable if the
-     default is older — the build uses `tsc -b` and modern Node APIs)
+   - Node version: pinned by the `.node-version` file in the repo, so there is
+     normally nothing to set. If your build image ignores it, add a
+     `NODE_VERSION=22` build environment variable — Vite 8 needs Node
+     20.19+/22.12+ and an older default is the most common build failure.
+
+### Confirming which build is live
+
+The footer of the export panel shows `build <sha>`, taken from
+`CF_PAGES_COMMIT_SHA`. If it does not match the commit you expect, the deploy
+is stale — which is worth checking before assuming the app is misbehaving,
+because a stale bundle and a stale saved project look identical from the
+outside.
 3. Deploy. You get `https://parcelmap.pages.dev`, plus a distinct preview URL
    for every branch, so the `claude/parcelmap-delivery-animation-wa9zsf`
    branch gets its own URL without touching production.

@@ -12,7 +12,8 @@
     "verify:stage": "node scripts/verify-stage.mjs",
     "verify:animation": "node scripts/verify-animation.mjs",
     "verify:export": "node scripts/verify-export.mjs",
-    "verify": "npm run test && npm run build && npm run verify:stage && npm run verify:animation && npm run verify:export"
+    "verify": "npm run test && npm run build && npm run verify:stage && npm run verify:animation && npm run verify:editor && npm run verify:export",
+    "verify:editor": "node scripts/verify-editor.mjs"
   },
   "dependencies": {
     "@turf/distance": "^7.4.0",

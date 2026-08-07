@@ -1,4 +1,5 @@
 import { MAP_STYLE_LABELS } from '../lib/mapStyles.ts'
+import { ZOOM_OUT_SCALE } from '../lib/stage.ts'
 import { FPS, computeTimeline, formatDuration } from '../lib/timeline.ts'
 import type { AspectRatio, MapStyleId, VideoSettings } from '../lib/types.ts'
 
@@ -156,8 +157,9 @@ export function SettingsPanel({ settings, destinationCount, onChange }: Settings
         <span className="text-xs">
           <span className="block font-medium text-slate-200">Slow zoom-out</span>
           <span className="block text-slate-500">
-            Backs the camera off by 5% across the clip. Off by default — a static camera keeps the
-            arcs the only thing moving.
+            Widens the view by {Math.round((ZOOM_OUT_SCALE - 1) * 100)}% across the clip, starting
+            from the fitted framing so nothing gets clipped. Off by default — a static camera keeps
+            the arcs the only thing moving.
           </span>
         </span>
       </label>

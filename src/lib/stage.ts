@@ -39,6 +39,16 @@ export interface StageInit {
   scene: Scene
 }
 
+/**
+ * How much wider the view gets across the whole clip when camera drift is on.
+ *
+ * This was 1.05 originally. At 5% each edge of a 1080px frame moves 27px over
+ * a ten-second clip — roughly 2px per second, which nobody can see, so the
+ * toggle read as broken. 1.15 is a drift you actually notice without it
+ * competing with the arcs for attention.
+ */
+export const ZOOM_OUT_SCALE = 1.15
+
 /** Camera padding as a fraction of each dimension, per aspect ratio. */
 const CAMERA_PADDING: Record<AspectRatio, { top: number; bottom: number; left: number; right: number }> = {
   '9:16': { top: 0.22, bottom: 0.22, left: 0.06, right: 0.06 },
@@ -453,8 +463,13 @@ export class MapStage {
 
   /**
    * Camera for a given frame. Static by default — the whole point is that the
-   * basemap does not drift while the arcs animate. The optional toggle backs
-   * off by 5% of scale across the clip, which is log2(1.05) in zoom terms.
+   * basemap does not drift while the arcs animate.
+   *
+   * With the drift toggle on, the camera starts at the fitted view and widens
+   * to {@link ZOOM_OUT_SCALE} by the last frame. Widening (rather than
+   * starting tight and pulling back to the fit) means every frame is at least
+   * as wide as the fitted view, so a destination can never be clipped as it
+   * lands.
    */
   cameraAt(frame: number): CameraState {
     if (!this.scene.settings.slowZoomOut) return this.baseCamera
@@ -462,7 +477,7 @@ export class MapStage {
     const t = clamp01(frame / total)
     return {
       center: this.baseCamera.center,
-      zoom: this.baseCamera.zoom - Math.log2(1.05) * t,
+      zoom: this.baseCamera.zoom - Math.log2(ZOOM_OUT_SCALE) * t,
     }
   }
 

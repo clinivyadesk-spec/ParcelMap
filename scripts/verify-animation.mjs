@@ -176,6 +176,52 @@ try {
   const readout = await page.textContent('[data-testid="frame-readout"]')
   assert(readout.startsWith(`${probe.frames.midway}/`),
     'the frame slider drives the stage', `readout="${readout}"`)
+
+  // The shipped sample is a small fan, so push a deliberately crowded scene
+  // through the same layout code to keep the collision invariant under load.
+  const stress = await page.evaluate(() => {
+    const stage = window.__stage
+    const scene = stage.getScene()
+    stage.setScene({
+      ...scene,
+      destinations: [
+        ['Guntur', 80.4365, 16.3067], ['Tenali', 80.64, 16.243],
+        ['Eluru', 81.0952, 16.7107], ['Gudivada', 80.993, 16.4333],
+        ['Machilipatnam', 81.1389, 16.1875], ['Nuzvid', 80.8461, 16.7877],
+        ['Bhimavaram', 81.5212, 16.5449], ['Narasaraopet', 80.049, 16.235],
+        ['Ongole', 80.0499, 15.5057], ['Chirala', 80.352, 15.8237],
+        ['Rajahmundry', 81.804, 17.0005], ['Kakinada', 82.2475, 16.9891],
+        ['Tanuku', 81.68, 16.75], ['Vinukonda', 79.74, 16.05],
+        ['Piduguralla', 79.88, 16.48], ['Jaggayyapeta', 80.1, 16.89],
+      ].map(([name, lng, lat], i) => ({
+        id: `stress_${i}`, name, lng, lat, subLabel: `${i + 3} units`,
+      })),
+    })
+
+    const total = stage.getTimeline().totalFrames
+    let worst = null
+    let collisions = 0
+    for (let f = 0; f < total; f += 3) {
+      stage.renderFrame(f)
+      const chips = stage.getLabelLayout()
+      for (let i = 0; i < chips.length; i++) {
+        for (let j = i + 1; j < chips.length; j++) {
+          const a = chips[i], b = chips[j]
+          const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
+          const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+          if (ox > 1 && oy > 1) {
+            collisions++
+            if (!worst) worst = { frame: f, a: a.text, b: b.text }
+          }
+        }
+      }
+    }
+    stage.renderFrame(total - 1)
+    return { chips: stage.getLabelLayout().length, collisions, worst, total }
+  })
+  assert(stress.collisions === 0,
+    `no chip collisions with a crowded ${stress.chips}-chip fan`,
+    JSON.stringify(stress.worst))
 } finally {
   await browser.close()
   await server.stop()

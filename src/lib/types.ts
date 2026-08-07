@@ -52,12 +52,12 @@ export const ASPECT_SIZES: Record<AspectRatio, { width: number; height: number }
 }
 
 export const DEFAULT_SETTINGS: VideoSettings = {
-  title: 'Daily Dispatch',
-  subtitle: 'Vijayawada → Andhra Pradesh',
+  title: "Dr Rakesh's Homoeopathy",
+  subtitle: 'A complete family clinic',
   aspect: '9:16',
-  arcColor: '#f97316',
-  mapStyle: 'positron',
+  arcColor: '#22c55e',
+  mapStyle: 'liberty',
   secondsPerDestination: 0.6,
-  slowZoomOut: false,
-  logoText: 'ParcelMap',
+  slowZoomOut: true,
+  logoText: "Dr Rakesh's Homoeopathy",
 }

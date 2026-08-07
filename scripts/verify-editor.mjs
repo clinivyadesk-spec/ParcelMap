@@ -51,7 +51,7 @@ try {
   ok('editor booted with the sample project')
 
   const initialCount = await page.locator('[data-testid="destination-item"]').count()
-  assert(initialCount === 12, 'sample project loads 12 destinations', `got ${initialCount}`)
+  assert(initialCount === 5, 'sample project loads its 5 destinations', `got ${initialCount}`)
 
   // --- geocoding ------------------------------------------------------------
   await page.fill('[data-testid="destination-search"]', 'Guntur')
@@ -80,7 +80,7 @@ try {
   await page.click('[data-testid="place-results"] li button')
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid="destination-item"]').length === n,
-    13,
+    6,
     { timeout: 10000 },
   )
   ok('picking a result appends a destination')
@@ -99,7 +99,7 @@ try {
   await page.click('[data-testid="accept-coords"]')
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid="destination-item"]').length === n,
-    14,
+    7,
     { timeout: 10000 },
   )
   assert(geocodeRequests.length === 1,
@@ -149,14 +149,14 @@ try {
   await page.locator('[data-testid="remove-destination"]').first().click()
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid="destination-item"]').length === n,
-    13,
+    6,
     { timeout: 10000 },
   )
   ok('removing a destination works')
 
   // --- the stage tracks edits ----------------------------------------------
   const legCount = await page.evaluate(() => window.__stage.getTimeline().legs.length)
-  assert(legCount === 13, 'the render timeline follows the edited destination list',
+  assert(legCount === 6, 'the render timeline follows the edited destination list',
     `${legCount} legs`)
 
   // --- persistence ----------------------------------------------------------
@@ -166,7 +166,7 @@ try {
   await page.waitForFunction(
     () => {
       const projects = JSON.parse(localStorage.getItem('parcelmap.projects.v1') ?? '[]')
-      return projects[0]?.name === 'Pharmacy run A' && projects[0]?.destinations.length === 13
+      return projects[0]?.name === 'Pharmacy run A' && projects[0]?.destinations.length === 6
     },
     undefined,
     { timeout: 15000 },
@@ -188,7 +188,7 @@ try {
   console.log('  storage:', JSON.stringify(stored))
 
   assert(stored.name === 'Pharmacy run A', 'the project is written to localStorage')
-  assert(stored.destinations === 13, 'destinations persist', `${stored.destinations}`)
+  assert(stored.destinations === 6, 'destinations persist', `${stored.destinations}`)
   assert(stored.hasGeoCache, 'the geocode cache is persisted to localStorage')
   assert(stored.currentId != null, 'the current project id is remembered')
 
@@ -198,7 +198,7 @@ try {
   const reloadedName = await page.inputValue('[data-testid="project-name"]')
   const reloadedCount = await page.locator('[data-testid="destination-item"]').count()
   assert(reloadedName === 'Pharmacy run A', 'the project reopens after a reload', reloadedName)
-  assert(reloadedCount === 13, 'destinations survive the reload', `${reloadedCount}`)
+  assert(reloadedCount === 6, 'destinations survive the reload', `${reloadedCount}`)
 
   const renamed = await page.locator('[data-testid="destination-name"]').first().inputValue()
   assert(renamed.length > 0, 'edited names survive the reload', renamed)
@@ -222,10 +222,10 @@ try {
   await page.screenshot({ path: resolve(outDir, '05-editor.png') })
 
   // Reopening the saved project from the picker.
-  await page.selectOption('[data-testid="project-picker"]', { label: 'Pharmacy run A (13)' })
+  await page.selectOption('[data-testid="project-picker"]', { label: 'Pharmacy run A (6)' })
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid="destination-item"]').length === n,
-    13,
+    6,
     { timeout: 15000 },
   )
   ok('the project picker reopens a saved project')

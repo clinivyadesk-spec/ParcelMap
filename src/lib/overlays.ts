@@ -128,6 +128,17 @@ function drawTitle(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: nu
   ctx.restore()
 }
 
+/**
+ * Chips shrink as the fan gets busier. Twenty destinations at full size
+ * cannot be packed into a 1080-wide frame without overlapping, however good
+ * the placement search is.
+ */
+function chipDensityScale(destinationCount: number): number {
+  if (destinationCount > 14) return 0.76
+  if (destinationCount > 10) return 0.86
+  return 1
+}
+
 /** Closest point on a rectangle's border to `p`, used to aim leader lines. */
 function anchorOn(rect: Rect, px: number, py: number): { x: number; y: number } {
   const cx = clamp(px, rect.x, rect.x + rect.w)
@@ -155,11 +166,15 @@ function drawPlaceLabel(
   if (label.opacity <= 0.01) return null
 
   const isHub = variant === 'hub'
-  const nameSize = (isHub ? 34 : 27) * scale
-  const subSize = (isHub ? 22 : 20) * scale
-  const padX = 16 * scale
-  const padY = 10 * scale
-  const gap = label.sub ? 5 * scale : 0
+  // A crowded fan needs smaller chips or there is simply not enough room to
+  // place them all without overlap. The hub chip keeps its full size.
+  const density = isHub ? 1 : chipDensityScale(input.destinationCount)
+  const chip = scale * density
+  const nameSize = (isHub ? 34 : 27) * chip
+  const subSize = (isHub ? 22 : 20) * chip
+  const padX = 16 * chip
+  const padY = 10 * chip
+  const gap = label.sub ? 5 * chip : 0
 
   ctx.font = font(isHub ? 800 : 700, nameSize)
   const nameWidth = ctx.measureText(label.text).width
@@ -176,7 +191,10 @@ function drawPlaceLabel(
   // the first free spot can run out of attempts and leave the chip sitting on
   // top of another one; scoring always yields the least-bad placement.
   const markerGap = (isHub ? 34 : 26) * scale
-  const step = 10 * scale
+  const step = 12 * scale
+  // The ladder has to be able to reach clear across the frame. At ±160px a
+  // busy fan simply runs out of slots and chips end up stacked.
+  const rungs = Math.ceil(input.height / step)
   const minX = 20 * scale
   const maxX = Math.max(minX, input.width - boxW - 20 * scale)
   const minY = 12 * scale
@@ -192,7 +210,7 @@ function drawPlaceLabel(
       minX,
       maxX,
     )
-    for (let i = 0; i <= 32; i++) {
+    for (let i = 0; i <= rungs; i++) {
       // 0, +1, -1, +2, -2, ... in units of `step`.
       const dy = (i === 0 ? 0 : Math.ceil(i / 2) * (i % 2 === 1 ? 1 : -1)) * step
       const candidate: Rect = {

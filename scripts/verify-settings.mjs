@@ -77,8 +77,8 @@ try {
   await page.waitForFunction(() => window.__stage != null, undefined, { timeout: 90000 })
   ok('editor ready')
 
-  assert(styleRequests.some((u) => u.includes('/styles/positron')),
-    'the default basemap fetches the OpenFreeMap positron style URL',
+  assert(styleRequests.some((u) => u.includes('/styles/liberty')),
+    'the default basemap fetches the OpenFreeMap liberty style URL',
     JSON.stringify(styleRequests))
   assert(styleRequests.every((u) => !u.includes('access_token') && !u.includes('api_key')),
     'no API key or token is ever sent', JSON.stringify(styleRequests))
@@ -135,7 +135,7 @@ try {
     assert(info.overlay.w === w && info.overlay.h === h,
       `${aspect}: overlay canvas matches`, `${info.overlay.w}x${info.overlay.h}`)
     assert(info.allInside, `${aspect}: camera refit keeps every place in frame`)
-    assert(info.chips === 13, `${aspect}: all 13 chips are laid out`, `${info.chips}`)
+    assert(info.chips === 6, `${aspect}: all 6 chips are laid out`, `${info.chips}`)
     assert(info.outOfFrameChips === 0, `${aspect}: no chip falls outside the frame`,
       `${info.outOfFrameChips} outside`)
 
@@ -156,57 +156,102 @@ try {
     return src.features[0]?.properties.color
   })
 
-  await setInput(page, 'setting-color', '#22c55e')
+  await setInput(page, 'setting-color', '#38bdf8')
   await page.waitForFunction(
     () => {
       const stage = window.__stage
       stage.renderFrame(stage.getTimeline().totalFrames - 1)
       const src = stage.map.getStyle().sources['pm-arcs'].data
-      return src.features[0]?.properties.color === '#22c55e'
+      return src.features[0]?.properties.color === '#38bdf8'
     },
     undefined,
     { timeout: 15000 },
   )
-  ok(`arc colour propagates to the map layers (${colourBefore} -> #22c55e)`)
+  ok(`arc colour propagates to the map layers (${colourBefore} -> #38bdf8)`)
   await shoot(page, '06-colour-green')
 
   // --- pacing ---------------------------------------------------------------
-  const framesBefore = await page.evaluate(() => window.__stage.getTimeline().totalFrames)
+  // Compare the reveal span rather than the whole clip. The fixed hub intro
+  // and final hold do not scale with this setting, so on a short list they
+  // dilute the total badly enough to make a whole-clip ratio meaningless.
+  const revealSpan = () =>
+    page.evaluate(() => {
+      const t = window.__stage.getTimeline()
+      return { span: t.outroStart - t.legs[0].startFrame, total: t.totalFrames }
+    })
+
+  const paceBefore = await revealSpan()
   await setInput(page, 'setting-seconds', '1.2')
   await page.waitForFunction(
     (before) => window.__stage.getTimeline().totalFrames > before,
-    framesBefore,
+    paceBefore.total,
     { timeout: 15000 },
   )
-  const framesAfter = await page.evaluate(() => window.__stage.getTimeline().totalFrames)
-  assert(framesAfter > framesBefore * 1.5,
-    'seconds-per-destination lengthens the clip',
-    `${framesBefore} -> ${framesAfter} frames`)
+  const paceAfter = await revealSpan()
+
+  const ratio = paceAfter.span / paceBefore.span
+  assert(ratio > 1.8 && ratio < 2.2,
+    'doubling seconds-per-destination doubles the destination reveal span',
+    `${paceBefore.span} -> ${paceAfter.span} frames (${ratio.toFixed(2)}x)`)
+  assert(paceAfter.total > paceBefore.total,
+    'and the clip as a whole gets longer',
+    `${paceBefore.total} -> ${paceAfter.total} frames`)
 
   // --- slow zoom-out --------------------------------------------------------
-  await page.click('[data-testid="setting-zoomout"]')
-  const zoomDrift = await page.evaluate(() => {
+  // Measure what the map actually ends up doing, not just what cameraAt()
+  // returns. An earlier version of this check only compared cameraAt values,
+  // which happily passed while the on-screen drift was far too small to see.
+  const zoomToggle = page.locator('[data-testid="setting-zoomout"]')
+  if (!(await zoomToggle.isChecked())) await zoomToggle.click()
+  await page.waitForFunction(() => window.__stage.getScene().settings.slowZoomOut === true,
+    undefined, { timeout: 10000 })
+
+  const drift = await page.evaluate(() => {
     const stage = window.__stage
     const total = stage.getTimeline().totalFrames
-    return { first: stage.cameraAt(0).zoom, last: stage.cameraAt(total - 1).zoom }
+    const sample = (f) => {
+      stage.renderFrame(f)
+      const b = stage.map.getBounds()
+      return { applied: stage.map.getZoom(), span: b.getEast() - b.getWest() }
+    }
+    const first = sample(0)
+    const last = sample(total - 1)
+    return { first, last, width: stage.width }
   })
-  const drop = zoomDrift.first - zoomDrift.last
-  assert(Math.abs(drop - Math.log2(1.05)) < 1e-6,
-    'the zoom-out toggle backs off by exactly 5% of scale',
-    `zoom fell by ${drop}`)
 
-  await page.click('[data-testid="setting-zoomout"]')
+  const zoomDrop = drift.first.applied - drift.last.applied
+  assert(Math.abs(zoomDrop - Math.log2(1.15)) < 1e-6,
+    'the applied map zoom widens by 15% of scale across the clip',
+    `zoom fell by ${zoomDrop}, expected ${Math.log2(1.15)}`)
+
+  // Perceptibility floor: at 5% each edge moved 27px over the whole clip,
+  // which read as the toggle doing nothing. Keep it comfortably above that.
+  const edgeShiftPx = ((drift.last.span / drift.first.span) - 1) * drift.width / 2
+  assert(edgeShiftPx > 50,
+    'the drift is large enough to actually see',
+    `each edge moves only ${edgeShiftPx.toFixed(1)}px across the clip`)
+
+  assert(drift.last.span > drift.first.span,
+    'the view widens rather than tightening, so nothing gets clipped',
+    `${drift.first.span} -> ${drift.last.span}`)
+
+  await zoomToggle.click()
+  await page.waitForFunction(() => window.__stage.getScene().settings.slowZoomOut === false,
+    undefined, { timeout: 10000 })
   const staticCam = await page.evaluate(() => {
     const stage = window.__stage
     const total = stage.getTimeline().totalFrames
-    const a = stage.cameraAt(0)
-    const b = stage.cameraAt(total - 1)
-    return a.zoom === b.zoom && a.center[0] === b.center[0] && a.center[1] === b.center[1]
+    stage.renderFrame(0)
+    const first = stage.map.getZoom()
+    stage.renderFrame(total - 1)
+    return { first, last: stage.map.getZoom() }
   })
-  assert(staticCam, 'with the toggle off the camera is completely static')
+  assert(staticCam.first === staticCam.last,
+    'with the toggle off the applied camera is completely static',
+    `${staticCam.first} vs ${staticCam.last}`)
 
   // --- basemap swap ---------------------------------------------------------
-  // positron -> offline (a bundled style object) ...
+  // liberty -> offline (a bundled style object) ...
   await page.selectOption('[data-testid="setting-style"]', 'offline')
   await page.waitForFunction(
     () => window.__stage.map.getStyle()?.name === 'ParcelMap offline grid',
@@ -216,14 +261,14 @@ try {
   ok('swapping to the bundled offline basemap works')
 
   // ... and back out to a fetched style URL.
-  await page.selectOption('[data-testid="setting-style"]', 'liberty')
+  await page.selectOption('[data-testid="setting-style"]', 'positron')
   await page.waitForFunction(
     () => window.__stage.map.getStyle()?.name === 'mock positron',
     undefined,
     { timeout: 30000 },
   )
-  assert(styleRequests.some((u) => u.includes('/styles/liberty')),
-    'selecting Liberty fetches its OpenFreeMap style URL',
+  assert(styleRequests.some((u) => u.includes('/styles/positron')),
+    'selecting Positron fetches its OpenFreeMap style URL',
     JSON.stringify(styleRequests))
 
   // The swap finishes asynchronously and restores the frame the user was on,
@@ -233,7 +278,7 @@ try {
       const stage = window.__stage
       stage.renderFrame(stage.getTimeline().totalFrames - 1)
       const arcs = stage.map.getStyle().sources['pm-arcs']?.data
-      return arcs?.features?.length === 12
+      return arcs?.features?.length === 5
     },
     undefined,
     { timeout: 30000 },
@@ -263,8 +308,8 @@ try {
 
   assert(afterSwap.hasOurLayers,
     'the arc, pin and hub layers are rebuilt on top of the new basemap')
-  assert(afterSwap.arcFeatures === 12,
-    'all 12 arcs are repopulated after the style swap', `${afterSwap.arcFeatures} arcs`)
+  assert(afterSwap.arcFeatures === 5,
+    'all 5 arcs are repopulated after the style swap', `${afterSwap.arcFeatures} arcs`)
   assert(!afterSwap.usedFallback, 'a reachable style is not replaced by the offline fallback')
 
   const [r, g, b] = afterSwap.cornerPixel

@@ -1,0 +1,12 @@
+# Cloudflare Pages project config.
+#
+# ParcelMap is a fully static single-page app — there is no Worker, no
+# server-side rendering and no backend of any kind. Pages just serves dist/.
+#
+#   npx wrangler pages deploy
+#
+# picks up the settings below, so no flags are needed.
+
+name = "parcelmap"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-08-07"

@@ -124,6 +124,66 @@ normalised on read, so a project written by an older build is repaired rather
 than discarded. Nothing leaves the machine except geocoding queries and map
 tiles.
 
+## Deploying
+
+ParcelMap is a fully static single-page app — no backend, no server-side
+rendering, no environment variables, no secrets to configure. Any static host
+works; the repo is set up for **Cloudflare Pages**.
+
+Build command `npm run build`, output directory `dist`.
+
+HTTPS matters here beyond the usual reasons: WebCodecs only exposes
+`VideoEncoder` in a secure context, so MP4 export simply will not appear on a
+plain-HTTP host. Pages is HTTPS by default.
+
+### Option A — connect the repo in the dashboard (no secrets)
+
+The quickest path, and it auto-deploys on every push.
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** →
+   **Connect to Git**, and pick this repository.
+2. Settings:
+   - Framework preset: **Vite** (or None)
+   - Build command: `npm run build`
+   - Build output directory: `dist`
+   - Node version: **22** (add a `NODE_VERSION=22` build variable if the
+     default is older — the build uses `tsc -b` and modern Node APIs)
+3. Deploy. You get `https://parcelmap.pages.dev`, plus a distinct preview URL
+   for every branch, so the `claude/parcelmap-delivery-animation-wa9zsf`
+   branch gets its own URL without touching production.
+
+### Option B — deploy from your machine
+
+```
+npm run build
+npx wrangler pages deploy        # reads wrangler.toml
+```
+
+`wrangler` will open a browser to authenticate the first time.
+
+### Option C — GitHub Actions
+
+`.github/workflows/deploy.yml` builds, lints, runs the unit tests and deploys
+on push. It needs two repository secrets:
+
+- `CLOUDFLARE_API_TOKEN` — an API token with the **Cloudflare Pages: Edit**
+  permission
+- `CLOUDFLARE_ACCOUNT_ID` — from the dashboard sidebar
+
+Without those secrets the workflow's deploy step fails; the build and test
+steps still run, so it doubles as CI.
+
+### What ships alongside the build
+
+- `public/_headers` — immutable caching for the fingerprinted `/assets/*`
+  files and `no-cache` for `index.html`, plus `nosniff` and a referrer policy.
+  It deliberately does **not** set `Cross-Origin-Embedder-Policy`: that would
+  require every basemap tile to carry `Cross-Origin-Resource-Policy`, which
+  OpenFreeMap does not send, and the map would silently stop loading.
+- `public/_redirects` — SPA fallback so a refresh on any path serves the app.
+
+Both are copied to the root of `dist/` by Vite and consumed by Pages.
+
 ## Development
 
 ```

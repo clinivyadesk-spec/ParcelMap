@@ -1,0 +1,3 @@
+# Single-page app: serve index.html for any path that is not a real file, so
+# a refresh on a deep link does not 404.
+/*  /index.html  200

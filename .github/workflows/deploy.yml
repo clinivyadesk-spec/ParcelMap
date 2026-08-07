@@ -1,0 +1,48 @@
+name: Deploy to Cloudflare Pages
+
+# Only needed if you want CI to deploy. The simpler alternative is to connect
+# the repository in the Cloudflare Pages dashboard, which needs no secrets at
+# all — see the "Deploying" section of the README.
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck, lint and unit tests
+        run: |
+          npm run lint
+          npm test
+
+      # `npm run build` runs tsc first, so a type error fails the deploy.
+      - name: Build
+        run: npm run build
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=parcelmap --branch=${{ github.ref_name }}

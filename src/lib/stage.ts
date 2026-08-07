@@ -68,6 +68,8 @@ export class MapStage {
   /** True when the requested basemap was unreachable and we fell back. */
   usedFallbackStyle = false
   private lastLabelLayout: PlacedLabel[] = []
+  /** Last payload pushed to each source, so unchanged frames skip setData. */
+  private lastSourceData = new Map<string, string>()
 
   width: number
   height: number
@@ -203,6 +205,7 @@ export class MapStage {
 
   private installLayers(): void {
     const map = this.map
+    this.lastSourceData.clear()
     for (const id of [SRC_PULSE, SRC_ARCS, SRC_PARCELS, SRC_PINS, SRC_HUB]) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY as never })
     }
@@ -341,6 +344,7 @@ export class MapStage {
     if (styleChanged) {
       this.map.setStyle(resolveStyle(scene.settings.mapStyle))
       this.map.once('styledata', () => {
+        this.lastSourceData.clear()
         this.installLayers()
         this.lastFrame = -1
         this.renderFrame(Math.min(this.lastFrame < 0 ? 0 : this.lastFrame, this.timeline.totalFrames - 1))
@@ -523,14 +527,24 @@ export class MapStage {
     return state
   }
 
+  /**
+   * Push new features into a source, skipping the update when nothing
+   * changed. Each setData costs a round trip to the tiling worker, and the
+   * export waits for the map to go idle on every frame — during the intro and
+   * the final hold most of these sources are static.
+   */
   private setData(id: string, features: GeoJSON.Feature[]): void {
     const source = this.map.getSource(id)
-    if (source && 'setData' in source) {
-      ;(source as GeoJSONSource).setData({
-        type: 'FeatureCollection',
-        features,
-      } as never)
-    }
+    if (!source || !('setData' in source)) return
+
+    const serialised = JSON.stringify(features)
+    if (this.lastSourceData.get(id) === serialised) return
+    this.lastSourceData.set(id, serialised)
+
+    ;(source as GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features,
+    } as never)
   }
 
   /** Draw the overlay canvas for `state`, projecting labels through the map. */

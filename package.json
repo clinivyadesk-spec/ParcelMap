@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --experimental-strip-types --test scripts/test-units.mjs",
+    "verify:stage": "node scripts/verify-stage.mjs",
+    "verify:animation": "node scripts/verify-animation.mjs",
+    "verify:export": "node scripts/verify-export.mjs",
+    "verify": "npm run test && npm run build && npm run verify:stage && npm run verify:animation && npm run verify:export"
   },
   "dependencies": {
     "@turf/distance": "^7.4.0",

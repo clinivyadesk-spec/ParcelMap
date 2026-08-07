@@ -1,15 +1,26 @@
 # Cloudflare Pages headers. This file is copied to the root of dist/ at build
 # time and read by Pages when serving.
+#
+# Rules match the REQUEST PATH, not the file that ends up being served. A
+# visitor to the site requests "/", which does not match "/index.html" — an
+# earlier version of this file only listed the latter, so the entry point was
+# served with default caching. Browsers held onto stale HTML, that HTML
+# referenced the previous hashed bundle, and /assets/* is immutable, so the
+# old app stuck around indefinitely while a fresh per-deployment URL looked
+# correct. Both paths are listed now.
+
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
 
 /assets/*
   # Vite fingerprints every asset filename, so these are safe to cache forever.
   Cache-Control: public, max-age=31536000, immutable
 
-/index.html
-  # The entry point must not be cached, or a deploy will not reach browsers
-  # that already have it.
-  Cache-Control: no-cache
-
+# Security headers only. Deliberately no Cache-Control here: a broad rule
+# would collide with the two above and the precedence is not worth relying on.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

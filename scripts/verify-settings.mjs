@@ -219,10 +219,18 @@ try {
     return { first, last, width: stage.width }
   })
 
+  // Take the expected amount from the label the user reads, so the copy and
+  // the camera cannot drift apart without this failing.
+  const labelText = await page.textContent('[data-testid="setting-zoomout"] ~ span')
+  const claimedPct = Number(/Widens the view by (\d+)%/.exec(labelText ?? '')?.[1])
+  assert(Number.isFinite(claimedPct),
+    'the toggle states how much it widens the view', labelText?.trim())
+
   const zoomDrop = drift.first.applied - drift.last.applied
-  assert(Math.abs(zoomDrop - Math.log2(1.15)) < 1e-6,
-    'the applied map zoom widens by 15% of scale across the clip',
-    `zoom fell by ${zoomDrop}, expected ${Math.log2(1.15)}`)
+  const expectedDrop = Math.log2(1 + claimedPct / 100)
+  assert(Math.abs(zoomDrop - expectedDrop) < 1e-6,
+    `the applied map zoom widens by the ${claimedPct}% the label promises`,
+    `zoom fell by ${zoomDrop}, expected ${expectedDrop}`)
 
   // Perceptibility floor: at 5% each edge moved 27px over the whole clip,
   // which read as the toggle doing nothing. Keep it comfortably above that.

@@ -44,10 +44,11 @@ export interface StageInit {
  *
  * This was 1.05 originally. At 5% each edge of a 1080px frame moves 27px over
  * a ten-second clip — roughly 2px per second, which nobody can see, so the
- * toggle read as broken. 1.15 is a drift you actually notice without it
- * competing with the arcs for attention.
+ * toggle read as broken. 1.15 fixed that; 1.25 is the amount actually asked
+ * for, moving each edge about 135px. Going much beyond this starts to shrink
+ * the map noticeably by the final frame, where the counter sits.
  */
-export const ZOOM_OUT_SCALE = 1.15
+export const ZOOM_OUT_SCALE = 1.25
 
 /** Camera padding as a fraction of each dimension, per aspect ratio. */
 const CAMERA_PADDING: Record<AspectRatio, { top: number; bottom: number; left: number; right: number }> = {

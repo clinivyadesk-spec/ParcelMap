@@ -383,7 +383,17 @@ function drawCounter(ctx: CanvasRenderingContext2D, input: OverlayInput, scale: 
   void width
 }
 
-/** Basemap credit, baked into the frame so the exported MP4 carries it. */
+/**
+ * Basemap credit, baked into the frame so the exported MP4 carries it.
+ *
+ * This is not branding and not optional: OpenFreeMap serves OpenStreetMap
+ * data under ODbL, which requires the credit to travel with anything produced
+ * from it — including a video. MapLibre's own attribution control is a DOM
+ * node that the WebGL capture cannot see, so it has to be drawn here.
+ *
+ * It is deliberately quiet: small, low contrast and unboxed, so it reads as a
+ * credit line rather than competing with the user's own wordmark above it.
+ */
 function drawAttribution(
   ctx: CanvasRenderingContext2D,
   input: OverlayInput,
@@ -392,21 +402,16 @@ function drawAttribution(
   if (!input.attribution) return
 
   ctx.save()
-  ctx.font = font(500, 17 * scale)
+  ctx.font = font(500, 14 * scale)
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'right'
 
-  const text = input.attribution
-  const w = ctx.measureText(text).width
-  const x = input.width - 20 * scale
-  const y = input.height - 22 * scale
-
-  ctx.fillStyle = 'rgba(6, 12, 24, 0.55)'
-  roundRect(ctx, x - w - 14 * scale, y - 18 * scale, w + 20 * scale, 26 * scale, 6 * scale)
-  ctx.fill()
-
-  ctx.fillStyle = 'rgba(226, 240, 255, 0.72)'
-  ctx.fillText(text, x - 4 * scale, y)
+  // A soft shadow instead of a filled chip: legible over both the light and
+  // dark ends of the basemap without drawing a box around itself.
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.85)'
+  ctx.shadowBlur = 5 * scale
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.62)'
+  ctx.fillText(input.attribution, input.width - 18 * scale, input.height - 20 * scale)
   ctx.restore()
 }
 
